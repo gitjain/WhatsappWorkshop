@@ -1,0 +1,17 @@
+{
+  "name": "whatsapp-shard",
+  "version": "1.0.0",
+  "description": "Message server shard with WebSocket",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "ws": "^8.14.2",
+    "redis": "^4.6.11",
+    "pg": "^8.11.2",
+    "uuid": "^9.0.1"
+  }
+}

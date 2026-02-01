@@ -1,0 +1,156 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: whatsapp-postgres
+    environment:
+      POSTGRES_DB: whatsapp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: whatsapp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # Message Shard 1
+  shard-1:
+    build:
+      context: .
+      dockerfile: ./shard-1/Dockerfile
+    container_name: whatsapp-shard-1
+    environment:
+      SHARD_ID: "1"
+      PORT: 4001
+      REDIS_URL: redis://redis:6379
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: whatsapp
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "4001:4001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # Message Shard 2
+  shard-2:
+    build:
+      context: .
+      dockerfile: ./shard-2/Dockerfile
+    container_name: whatsapp-shard-2
+    environment:
+      SHARD_ID: "2"
+      PORT: 4002
+      REDIS_URL: redis://redis:6379
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: whatsapp
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "4002:4002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # Message Shard 3
+  shard-3:
+    build:
+      context: .
+      dockerfile: ./shard-3/Dockerfile
+    container_name: whatsapp-shard-3
+    environment:
+      SHARD_ID: "3"
+      PORT: 4003
+      REDIS_URL: redis://redis:6379
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: whatsapp
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "4003:4003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # API Gateway
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: whatsapp-gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - shard-1
+      - shard-2
+      - shard-3
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # Simple HTTP Server for Client
+  client:
+    image: httpserver:latest
+    container_name: whatsapp-client
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - gateway
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  whatsapp-network:
+    driver: bridge

@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Clone - Distributed Messaging System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: #f0f0f0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            font-size: 12px;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.disconnected {
+            background: #ef4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 15px;
+            padding: 15px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .left-panel {
+            flex: 0 0 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        input, select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            padding: 10px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* TAB STYLES */
+        .tabs-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 0;
+            background: white;
+            border-bottom: 2px solid #e0e0e0;
+            border-radius: 10px 10px 0 0;
+            overflow: hidden;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 14px 20px;
+            background: #f5f5f5;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            color: #666;
+            transition: all 0.2s;
+            margin: 0;
+            border-radius: 0;
+        }
+
+        .tab-btn:hover {
+            background: #efefef;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: white;
+        }
+
+        .tab-content {
+            display: none;
+            flex: 1;
+            background: white;
+            border-radius: 0 0 10px 10px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .users-list {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            max-height: 400px;
+        }
+
+        .user-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+            user-select: none;
+        }
+
+        .user-item:hover {
+            background: #f5f5f5;
+        }
+
+        .user-item.active {
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+            border-left: 4px solid #667eea;
+            padding-left: 8px;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            padding: 15px;
+            background: #fafafa;
+            min-height: 300px;
+            max-height: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            padding: 12px 14px;
+            border-radius: 12px;
+            max-width: 75%;
+            word-wrap: break-word;
+            font-size: 14px;
+            animation: slideIn 0.3s ease-out;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.sent {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+            margin-left: 20px;
+        }
+
+        .message.received {
+            background: #f0f0f0;
+            color: #222;
+            border: none;
+            border-bottom-left-radius: 4px;
+            margin-right: 20px;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-top: 6px;
+        }
+        
+        .message.sent .timestamp {
+            opacity: 0.8;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-size: 14px;
+        }
+
+        .system-info {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .system-info strong {
+            color: #667eea;
+        }
+
+        .shards-status {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .shard-card {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 12px;
+            border-left: 4px solid #ccc;
+        }
+
+        .shard-card.healthy {
+            border-left-color: #4ade80;
+            background: #f0fdf4;
+        }
+
+        .shard-card.unhealthy {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .error {
+            background: #fee;
+            color: #c00;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+
+        .success {
+            background: #efe;
+            color: #060;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>💬 WhatsApp Clone - Distributed Messaging System</h1>
+        <div class="status">
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span id="statusText">Loading...</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="left-panel">
+            <div class="card">
+                <h3>🔐 Select Your Identity</h3>
+                <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                    Choose a user ID (1-10). This identifies YOU in the system. Messages will be routed to one of 3 shards based on your ID.
+                </p>
+                <div class="form-group">
+                    <label for="userId">Your User ID (Who YOU are)</label>
+                    <input type="text" id="userId" placeholder="Enter 1-10" value="1">
+                    <small style="color: #999;">Each number goes to a different shard (modulo 3)</small>
+                </div>
+                <button onclick="registerUser()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Connect as User</button>
+                <div id="userMessage"></div>
+                <div id="currentUserDisplay" style="margin-top: 10px; padding: 8px; background: #f0f4ff; border-left: 4px solid #667eea; border-radius: 4px; display: none;">
+                    <strong style="color: #667eea;">👤 You are: User <span id="currentUserBadge">-</span></strong>
+                    <br><small style="color: #666;">Messages from you go to Shard <span id="yourShardDisplay">-</span></small>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>👥 Active Participants</h3>
+                <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                    Users who have sent/received messages (loaded from database)
+                </p>
+                <div class="users-list" id="usersList">
+                    <div class="empty-state">No messages yet</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🏥 System Status</h3>
+                <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                    Check if all 3 message shards are healthy
+                </p>
+                <button onclick="checkShardHealth()">Check Shard Status</button>
+                <div class="shards-status" id="shardsStatus"></div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- TABS CONTAINER -->
+            <div class="tabs-container">
+                <!-- TAB BUTTONS -->
+                <div class="tab-buttons">
+                    <button class="tab-btn active" onclick="switchTab('conversation')">💬 Conversation</button>
+                    <button class="tab-btn" onclick="switchTab('health')">🏥 System Health</button>
+                    <button class="tab-btn" onclick="switchTab('cache')">⚡ Redis Cache</button>
+                </div>
+
+                <!-- TAB 1: CONVERSATION -->
+                <div class="tab-content active" id="tab-conversation">
+                    <div style="display: flex; flex-direction: column; gap: 15px; height: 100%;">
+                        <!-- Conversation Area -->
+                        <div style="flex: 1; display: flex; flex-direction: column; background: white; border-radius: 8px; padding: 15px; border: 1px solid #eee;">
+                            <div style="margin-bottom: 12px;">
+                                <h3 style="margin: 0 0 8px 0;">💬 Messages</h3>
+                                <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; border-radius: 4px; font-size: 13px; color: #856404;" id="conversationInfo">
+                                    👈 Select a user from the dropdown to start chatting
+                                </div>
+                            </div>
+                            <div class="messages-container" id="messagesContainer">
+                                <div class="empty-state">No conversation selected</div>
+                            </div>
+                        </div>
+
+                        <!-- Send Message Area -->
+                        <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #eee;">
+                            <h3 style="margin: 0 0 12px 0;">✉️ Send Message</h3>
+                            
+                            <div style="background: #f0f4ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                                <div style="font-size: 13px; color: #666; margin-bottom: 8px;"><strong>From:</strong> <span id="fromUserDisplay" style="color: #667eea; font-weight: bold;">-</span></div>
+                                <div style="font-size: 13px; color: #666;"><strong>To:</strong> <span id="toUserDisplay" style="color: #764ba2; font-weight: bold;">-</span></div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label style="font-weight: 600; display: block; margin-bottom: 8px;">👥 Select Who to Chat With</label>
+                                <select id="recipientId" onchange="onRecipientChange()" style="padding: 10px 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white; cursor: pointer;">
+                                    <option value="">-- Choose a user --</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="messageContent" style="font-weight: 600;">💬 Message</label>
+                                <textarea id="messageContent" placeholder="Type your message..." style="resize: vertical; min-height: 80px;"></textarea>
+                            </div>
+                            
+                            <button onclick="sendMessage()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 100%; padding: 12px; font-size: 15px; font-weight: 600;">Send Message</button>
+                            <div id="sendMessage"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: SYSTEM HEALTH -->
+                <div class="tab-content" id="tab-health">
+                    <div style="display: flex; flex-direction: column; gap: 15px;">
+                        <div>
+                            <h3 style="margin-bottom: 12px;">🏥 Shard Health Status</h3>
+                            <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                                Monitor the health of all 3 message shards
+                            </p>
+                            <button onclick="checkShardHealth()" style="margin-bottom: 15px;">🔄 Refresh Shard Status</button>
+                            <div class="shards-status" id="shardsStatus" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                                <div class="shard-card" style="text-align: center; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9;">
+                                    <p style="color: #999;">Click refresh to load shard status</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="background: #f0f4ff; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+                            <h4 style="margin: 0 0 8px 0; color: #667eea;">ℹ️ How Sharding Works</h4>
+                            <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #666; line-height: 1.6;">
+                                <li><strong>User ID % 3</strong> determines which shard stores the message</li>
+                                <li><strong>User 1, 4, 7, 10...</strong> → Shard 1</li>
+                                <li><strong>User 2, 5, 8, 11...</strong> → Shard 2</li>
+                                <li><strong>User 3, 6, 9, 12...</strong> → Shard 3</li>
+                                <li>Messages <strong>persist in PostgreSQL</strong></li>
+                                <li>Frequent conversations <strong>cached in Redis</strong> for speed</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: REDIS CACHE -->
+                <div class="tab-content" id="tab-cache">
+                    <div style="display: flex; flex-direction: column; gap: 15px;">
+                        <div>
+                            <h3 style="margin-bottom: 12px;">⚡ Redis Cache Monitor</h3>
+                            <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                                Real-time cache operations and statistics
+                            </p>
+                            <button onclick="startCacheMonitoring()" style="margin-bottom: 15px;">🚀 Start Monitoring</button>
+                            <button onclick="stopCacheMonitoring()" style="margin-bottom: 15px; background: #dc2626;">⏹️ Stop Monitoring</button>
+                        </div>
+
+                        <div style="background: #f5f5f5; border-radius: 8px; padding: 15px; border: 1px solid #ddd; max-height: 400px; overflow-y: auto;">
+                            <h4 style="margin: 0 0 12px 0;">Cache Activity Log</h4>
+                            <div id="cacheLog" style="font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.6; color: #333;">
+                                <div style="color: #999;">Cache monitoring inactive. Click "Start Monitoring" to begin.</div>
+                            </div>
+                        </div>
+
+                        <div style="background: #efe; border-left: 4px solid #060; padding: 12px; border-radius: 6px; font-size: 12px; color: #060;">
+                            <strong>📝 Note:</strong> Cache updates happen automatically when you send/receive messages or view conversations. The monitor shows cache keys being written and read.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const GATEWAY_URL = 'http://localhost:3000';
+        let currentUserId = null;
+        let selectedUserId = null;
+        let connectedShards = {};
+        let messageHistory = {};
+        let wsConnections = {}; // WebSocket connections per shard
+        let cacheMonitoringActive = false;
+        let cacheLogEntries = [];
+
+        // Tab switching function
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Deactivate all buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById('tab-' + tabName).classList.add('active');
+            
+            // Activate selected button
+            event.target.classList.add('active');
+        }
+
+        // Cache monitoring functions
+        function startCacheMonitoring() {
+            cacheMonitoringActive = true;
+            cacheLogEntries = [];
+            document.getElementById('cacheLog').innerHTML = '<div style="color: #060; font-weight: bold;">✓ Monitoring started...</div>';
+            console.log('[CLIENT] Cache monitoring started');
+            
+            // Log initial status
+            addCacheLogEntry('MONITORING_STARTED', 'Cache monitoring activated');
+        }
+
+        function stopCacheMonitoring() {
+            cacheMonitoringActive = false;
+            addCacheLogEntry('MONITORING_STOPPED', 'Cache monitoring deactivated');
+            console.log('[CLIENT] Cache monitoring stopped');
+        }
+
+        function addCacheLogEntry(operation, details) {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `[${timestamp}] ${operation}: ${details}`;
+            cacheLogEntries.unshift(entry);
+            
+            // Keep only last 50 entries
+            if (cacheLogEntries.length > 50) {
+                cacheLogEntries.pop();
+            }
+            
+            // Update display
+            const logDiv = document.getElementById('cacheLog');
+            logDiv.innerHTML = cacheLogEntries.map(e => `<div>${e}</div>`).join('');
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateStatus(false, 'Ready to connect');
+        });
+
+        // Update status indicator
+        function updateStatus(connected, message) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+            
+            if (connected) {
+                indicator.classList.remove('disconnected');
+                text.textContent = `✓ ${message}`;
+            } else {
+                indicator.classList.add('disconnected');
+                text.textContent = `✗ ${message}`;
+            }
+        }
+
+        // Register user and connect to WebSocket
+        async function registerUser() {
+            const userId = document.getElementById('userId').value;
+            
+            if (!userId) {
+                showMessage('userMessage', 'Please enter a user ID', false);
+                return;
+            }
+
+            currentUserId = userId;
+            const shardId = (userId % 3) || 3;
+            
+            updateStatus(true, `Connected as User ${userId}`);
+            showMessage('userMessage', `✓ You are now User ${userId}\n\nYour messages will be stored in Shard ${shardId}`, true);
+            
+            // Display current user badge
+            document.getElementById('currentUserDisplay').style.display = 'block';
+            document.getElementById('currentUserBadge').textContent = userId;
+            document.getElementById('yourShardDisplay').textContent = shardId;
+            
+            // Update "From" display
+            document.getElementById('fromUserDisplay').textContent = `User ${userId} (Shard ${shardId})`;
+            
+            // Reset "To" display
+            document.getElementById('toUserDisplay').textContent = '-';
+
+            // Load users
+            await loadUsers();
+            
+            // Load messages history
+            await loadMessages();
+            
+            // Connect WebSocket to all shards for real-time message updates
+            connectToAllShards();
+        }
+
+        // Connect WebSocket to all shards
+        function connectToAllShards() {
+            const shards = [1, 2, 3];
+            const shardPorts = { 1: 4001, 2: 4002, 3: 4003 };
+            
+            shards.forEach(shardId => {
+                const wsUrl = `ws://localhost:${shardPorts[shardId]}/ws`;
+                console.log(`[CLIENT] Connecting to Shard ${shardId} at ${wsUrl}`);
+                
+                const ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    console.log(`[CLIENT] Connected to Shard ${shardId}`);
+                    // Register this user with the shard
+                    ws.send(JSON.stringify({
+                        type: 'register',
+                        user_id: currentUserId
+                    }));
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        console.log(`[CLIENT] Received from Shard ${shardId}:`, message);
+                        
+                        if (message.type === 'message') {
+                            // New message received - refresh conversation if it's with selected user
+                            if (selectedUserId && (message.from_user_id == selectedUserId || message.to_user_id == selectedUserId)) {
+                                loadConversation();
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`[CLIENT] Error parsing message from Shard ${shardId}:`, error);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error(`[CLIENT] WebSocket error for Shard ${shardId}:`, error);
+                };
+                
+                ws.onclose = () => {
+                    console.log(`[CLIENT] Disconnected from Shard ${shardId}`);
+                };
+                
+                wsConnections[shardId] = ws;
+            });
+        }
+
+        // Load available users
+        async function loadUsers() {
+            try {
+                // Log cache operation
+                if (cacheMonitoringActive) {
+                    addCacheLogEntry('USERS_LOAD_START', 'Fetching users from shards...');
+                }
+                
+                const response = await fetch(`${GATEWAY_URL}/api/users`);
+                const data = await response.json();
+                
+                const users = data.users || [];
+                const usersList = document.getElementById('usersList');
+                
+                // Log successful load
+                if (cacheMonitoringActive) {
+                    addCacheLogEntry('USERS_LOADED', `${users.length} users from API`);
+                }
+                
+                if (users.length === 0) {
+                    usersList.innerHTML = '<div class="empty-state">No users found</div>';
+                    return;
+                }
+
+                const uniqueUsers = [...new Set(users)].sort((a, b) => a - b);
+                const otherUsers = uniqueUsers.filter(u => u != currentUserId);
+                
+                // Update user list
+                usersList.innerHTML = otherUsers
+                    .map(u => {
+                        const shardId = (u % 3) || 3;
+                        return `
+                            <div class="user-item" onclick="selectUser('${u}')">
+                                <strong>User ${u}</strong> → Shard ${shardId}
+                            </div>
+                        `;
+                    })
+                    .join('');
+                
+                // Update recipient dropdown
+                const recipientSelect = document.getElementById('recipientId');
+                const currentValue = recipientSelect.value;
+                recipientSelect.innerHTML = '<option value="">-- Select a user --</option>' + 
+                    otherUsers.map(u => {
+                        const shardId = (u % 3) || 3;
+                        return `<option value="${u}">User ${u} (Shard ${shardId})</option>`;
+                    }).join('');
+                if (currentValue) recipientSelect.value = currentValue;
+                
+                console.log(`[CLIENT] Loaded ${uniqueUsers.length} users:`, uniqueUsers);
+            } catch (error) {
+                console.error('Error loading users:', error);
+                
+                // Log error
+                if (cacheMonitoringActive) {
+                    addCacheLogEntry('USERS_ERROR', error.message);
+                }
+                
+                showMessage('userMessage', 'Failed to load users: ' + error.message, false);
+            }
+        }
+
+        // Select a user for conversation
+        function selectUser(userId) {
+            selectedUserId = userId;
+            document.getElementById('recipientId').value = userId;
+
+            // Update UI - mark as active
+            document.querySelectorAll('.user-item').forEach(el => {
+                el.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+
+            // Update "To" display
+            const toShardId = (userId % 3) || 3;
+            document.getElementById('toUserDisplay').textContent = `User ${userId} (Shard ${toShardId})`;
+            document.getElementById('toUserDisplay').style.color = '#764ba2';
+
+            // Load conversation
+            loadConversation();
+        }
+
+        // Load messages for current user
+        async function loadMessages() {
+            if (!currentUserId) return;
+
+            try {
+                const response = await fetch(`${GATEWAY_URL}/api/messages/${currentUserId}`);
+                const data = await response.json();
+                
+                console.log('Messages loaded:', data);
+            } catch (error) {
+                console.error('Error loading messages:', error);
+            }
+        }
+
+        // Load conversation between two users
+        async function loadConversation() {
+            if (!currentUserId || !selectedUserId) {
+                console.log('[CLIENT] Cannot load conversation - missing currentUserId or selectedUserId');
+                return;
+            }
+
+            try {
+                const url = `${GATEWAY_URL}/api/conversations/${currentUserId}/${selectedUserId}`;
+                console.log(`[CLIENT] Fetching conversation from: ${url}`);
+                
+                // Log cache operation
+                if (cacheMonitoringActive) {
+                    addCacheLogEntry('CACHE_READ', `conv:${currentUserId}:${selectedUserId}`);
+                }
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                console.log(`[CLIENT] Conversation API response:`, data);
+                
+                // Log if messages were from cache or database
+                if (cacheMonitoringActive) {
+                    addCacheLogEntry('CACHE_HIT', `Retrieved ${data.messages ? data.messages.length : 0} messages`);
+                }
+                
+                const container = document.getElementById('messagesContainer');
+                const messages = data.messages || [];
+
+                // Update conversation info
+                const currentShard = (currentUserId % 3) || 3;
+                const otherShard = (selectedUserId % 3) || 3;
+                document.getElementById('conversationInfo').innerHTML = 
+                    `<strong>💬 Chatting with User ${selectedUserId}</strong> (Shard ${otherShard}) | <strong>${messages.length} message(s)</strong>`;
+
+                if (messages.length === 0) {
+                    container.innerHTML = '<div class="empty-state" style="height: 100%; display: flex; align-items: center; justify-content: center; color: #999; font-size: 15px;">No messages yet. Start the conversation!</div>';
+                    console.log('[CLIENT] No messages found in conversation');
+                    return;
+                }
+
+                console.log(`[CLIENT] Rendering ${messages.length} messages`);
+                container.innerHTML = messages
+                    .map((msg, idx) => {
+                        const isSent = msg.from_user_id == currentUserId;
+                        const sender = isSent ? '👤 You' : `👤 User ${msg.from_user_id}`;
+                        return `
+                            <div class="message ${isSent ? 'sent' : 'received'}">
+                                <div style="margin-bottom: 4px; font-size: 12px; opacity: 0.8;"><strong>${sender}</strong></div>
+                                <div>${msg.content}</div>
+                                <div class="timestamp">${new Date(msg.created_at).toLocaleTimeString()}</div>
+                            </div>
+                        `;
+                    })
+                    .join('');
+
+                // Scroll to bottom
+                container.scrollTop = container.scrollHeight;
+            } catch (error) {
+                console.error('[CLIENT] Error loading conversation:', error);
+                showMessage('sendMessage', 'Failed to load conversation: ' + error.message, false);
+            }
+        }
+
+        // Send a message
+        async function sendMessage() {
+            const recipientId = document.getElementById('recipientId').value;
+            const content = document.getElementById('messageContent').value;
+
+            if (!currentUserId) {
+                showMessage('sendMessage', 'Please connect as a user first', false);
+                return;
+            }
+
+            if (!recipientId || !content) {
+                showMessage('sendMessage', 'Please fill in all fields', false);
+                return;
+            }
+
+            try {
+                const payload = {
+                    from_user_id: parseInt(currentUserId),
+                    to_user_id: parseInt(recipientId),
+                    content: content
+                };
+                
+                console.log(`[CLIENT] Sending message:`, payload);
+                
+                // Log cache operation
+                if (cacheMonitoringActive) {
+                    addCacheLogEntry('MESSAGE_SEND_START', `User ${currentUserId} → User ${recipientId}`);
+                }
+                
+                const response = await fetch(`${GATEWAY_URL}/api/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    console.error('[CLIENT] Server error:', error);
+                    
+                    // Log error
+                    if (cacheMonitoringActive) {
+                        addCacheLogEntry('MESSAGE_ERROR', `Failed with status ${response.status}`);
+                    }
+                    
+                    throw new Error('Failed to send message');
+                }
+
+                const data = await response.json();
+                console.log('[CLIENT] Message sent response:', data);
+                
+                // Log successful send
+                if (cacheMonitoringActive) {
+                    addCacheLogEntry('MESSAGE_SENT', `"${content.substring(0, 25)}..."`);
+                }
+                
+                const yourShard = (currentUserId % 3) || 3;
+                const recipientShard = (recipientId % 3) || 3;
+                showMessage('sendMessage', `✓ Message sent!\nFrom User ${currentUserId} (Shard ${yourShard}) → User ${recipientId} (Shard ${recipientShard})`, true);
+                document.getElementById('messageContent').value = '';
+
+                // Reload conversation after a short delay
+                setTimeout(() => {
+                    if (selectedUserId == recipientId) {
+                        loadConversation();
+                    }
+                }, 300);
+            } catch (error) {
+                console.error('[CLIENT] Error sending message:', error);
+                
+                // Log error
+                if (cacheMonitoringActive) {
+                    addCacheLogEntry('MESSAGE_ERROR', error.message);
+                }
+                
+                showMessage('sendMessage', 'Failed to send message: ' + error.message, false);
+            }
+        }
+
+        // Check shard health
+        async function checkShardHealth() {
+            try {
+                const response = await fetch(`${GATEWAY_URL}/api/health/shards`);
+                const data = await response.json();
+
+                const container = document.getElementById('shardsStatus');
+                container.innerHTML = data.shards
+                    .map(shard => `
+                        <div class="shard-card ${shard.status}">
+                            Shard ${shard.shard}<br>
+                            <strong>${shard.status === 'healthy' ? '✓' : '✗'}</strong>
+                        </div>
+                    `)
+                    .join('');
+            } catch (error) {
+                console.error('Error checking shard health:', error);
+            }
+        }
+
+        // Show message
+        function showMessage(elementId, message, isSuccess) {
+            const element = document.getElementById(elementId);
+            element.className = isSuccess ? 'success' : 'error';
+            element.textContent = message;
+            
+            setTimeout(() => {
+                element.textContent = '';
+                element.className = '';
+            }, 5000);
+        }
+
+        // Handle recipient dropdown change
+        function onRecipientChange() {
+            const recipientId = document.getElementById('recipientId').value;
+            if (recipientId) {
+                selectUser(recipientId);
+            } else {
+                selectedUserId = null;
+                document.getElementById('toUserDisplay').textContent = '-';
+                document.getElementById('messagesContainer').innerHTML = '<div class="empty-state" style="height: 100%; display: flex; align-items: center; justify-content: center;">Select a user to chat with</div>';
+            }
+        }
+
+        // Auto-refresh users every 5 seconds
+        setInterval(() => {
+            if (currentUserId) {
+                loadUsers();
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
