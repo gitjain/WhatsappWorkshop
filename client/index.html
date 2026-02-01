@@ -390,17 +390,19 @@
             <div class="card">
                 <h3>🔐 Select Your Identity</h3>
                 <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
-                    Choose a user ID (1-10). This identifies YOU in the system. Messages will be routed to one of 3 shards based on your ID.
+                    Choose your user. This identifies YOU in the system. Messages will be routed to one of 3 shards based on your ID.
                 </p>
                 <div class="form-group">
-                    <label for="userId">Your User ID (Who YOU are)</label>
-                    <input type="text" id="userId" placeholder="Enter 1-10" value="1">
-                    <small style="color: #999;">Each number goes to a different shard (modulo 3)</small>
+                    <label for="userSelect">Who are YOU?</label>
+                    <select id="userSelect" style="padding: 10px 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white; cursor: pointer;">
+                        <option value="">-- Load users first --</option>
+                    </select>
+                    <small style="color: #999;">Select your name from the dropdown</small>
                 </div>
-                <button onclick="registerUser()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Connect as User</button>
+                <button onclick="registerUser()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Connect as This User</button>
                 <div id="userMessage"></div>
                 <div id="currentUserDisplay" style="margin-top: 10px; padding: 8px; background: #f0f4ff; border-left: 4px solid #667eea; border-radius: 4px; display: none;">
-                    <strong style="color: #667eea;">👤 You are: User <span id="currentUserBadge">-</span></strong>
+                    <strong style="color: #667eea;">👤 You are: <span id="currentUserBadge">-</span></strong>
                     <br><small style="color: #666;">Messages from you go to Shard <span id="yourShardDisplay">-</span></small>
                 </div>
             </div>
@@ -621,35 +623,26 @@
 
         // Register user and connect to WebSocket
         async function registerUser() {
-            const userId = document.getElementById('userId').value;
+            const userSelect = document.getElementById('userSelect');
+            const selectedValue = userSelect.value;
             
-            if (!userId) {
-                showMessage('userMessage', 'Please enter a user ID', false);
+            if (!selectedValue) {
+                showMessage('userMessage', 'Please select a user first', false);
+                return;
+            }
+
+            // Parse the selected value (format: "id:name")
+            const [userId, userName] = selectedValue.split(':');
+            
+            if (!userId || !userName) {
+                showMessage('userMessage', 'Invalid user selection', false);
                 return;
             }
 
             currentUserId = userId;
+            currentUserName = userName;
             
-            // First load all users to get names
-            try {
-                const response = await fetch(`${GATEWAY_URL}/api/users`);
-                const data = await response.json();
-                const users = data.users || [];
-                
-                // Store user names
-                users.forEach(u => {
-                    userNames[u.id] = u.name;
-                });
-                
-                // Get current user's name
-                const currentUser = users.find(u => u.id == userId);
-                currentUserName = currentUser ? currentUser.name : `User ${userId}`;
-            } catch (error) {
-                console.error('Error loading users:', error);
-                currentUserName = `User ${userId}`;
-            }
-            
-            const shardId = (userId % 3) || 3;
+            const shardId = (parseInt(userId) % 3) || 3;
             
             updateStatus(true, `Connected as ${currentUserName}`);
             showMessage('userMessage', `✓ You are now ${currentUserName}\n\nYour messages will be stored in Shard ${shardId}`, true);
@@ -752,7 +745,15 @@
                     return;
                 }
 
-                // Filter out current user
+                // Populate the registration dropdown with ALL users (including current user)
+                const userSelect = document.getElementById('userSelect');
+                userSelect.innerHTML = '<option value="">-- Select a user --</option>' + 
+                    users.map(u => {
+                        const shardId = (u.id % 3) || 3;
+                        return `<option value="${u.id}:${u.name}">${u.name} (#${u.id}) - Shard ${shardId}</option>`;
+                    }).join('');
+
+                // Filter out current user for the chat list
                 const otherUsers = users.filter(u => u.id != currentUserId);
                 
                 // Update user list
@@ -1012,6 +1013,33 @@
                 document.getElementById('messagesContainer').innerHTML = '<div class="empty-state" style="height: 100%; display: flex; align-items: center; justify-content: center;">Select a user to chat with</div>';
             }
         }
+
+        // Load users on page load for the registration dropdown
+        async function initializeUserDropdown() {
+            try {
+                const response = await fetch(`${GATEWAY_URL}/api/users`);
+                const data = await response.json();
+                const users = data.users || [];
+                
+                // Store user names
+                users.forEach(u => {
+                    userNames[u.id] = u.name;
+                });
+                
+                // Populate the registration dropdown
+                const userSelect = document.getElementById('userSelect');
+                userSelect.innerHTML = '<option value="">-- Select a user --</option>' + 
+                    users.map(u => {
+                        const shardId = (u.id % 3) || 3;
+                        return `<option value="${u.id}:${u.name}">${u.name} (#${u.id}) - Shard ${shardId}</option>`;
+                    }).join('');
+            } catch (error) {
+                console.error('Error initializing user dropdown:', error);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initializeUserDropdown);
 
         // Auto-refresh users every 5 seconds
         setInterval(() => {
