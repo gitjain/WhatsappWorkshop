@@ -96,13 +96,13 @@ async function createShardServer(shardConfig) {
   app.get('/api/users', async (req, res) => {
     try {
       const result = await pool.query(
-        `SELECT DISTINCT COALESCE(from_user_id, to_user_id) as user_id 
-         FROM messages 
-         WHERE shard_id = $1`,
-        [SHARD_ID]
+        `SELECT id, name FROM users ORDER BY id`
       );
 
-      const users = result.rows.map(row => row.user_id);
+      const users = result.rows.map(row => ({
+        id: row.id,
+        name: row.name
+      }));
       console.log(`[SHARD-${SHARD_ID}] Retrieved ${users.length} users`);
       res.json({ users, shard_id: SHARD_ID });
     } catch (error) {
@@ -130,16 +130,11 @@ async function createShardServer(shardConfig) {
         [messageId, from_user_id, to_user_id, content, timestamp, SHARD_ID]
       );
 
-      // Cache in Redis
-      const cacheKey = `msg:${from_user_id}:${to_user_id}`;
-      await redisClient.lPush(cacheKey, JSON.stringify({
-        id: messageId,
-        from_user_id,
-        to_user_id,
-        content,
-        created_at: timestamp
-      }));
-      await redisClient.expire(cacheKey, 3600); // 1 hour TTL
+      // Invalidate conversation cache so fresh data is loaded
+      await redisClient.del(`conv:${from_user_id}:${to_user_id}`);
+      await redisClient.del(`conv:${to_user_id}:${from_user_id}`);
+      await redisClient.del(`user:messages:${from_user_id}`);
+      await redisClient.del(`user:messages:${to_user_id}`);
 
       console.log(`[SHARD-${SHARD_ID}] Message created: ${messageId}`);
 

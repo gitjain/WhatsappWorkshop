@@ -455,25 +455,11 @@
 
                         <!-- Send Message Area -->
                         <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #eee;">
-                            <h3 style="margin: 0 0 12px 0;">✉️ Send Message</h3>
-                            
-                            <div style="background: #f0f4ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #667eea;">
-                                <div style="font-size: 13px; color: #666; margin-bottom: 8px;"><strong>From:</strong> <span id="fromUserDisplay" style="color: #667eea; font-weight: bold;">-</span></div>
-                                <div style="font-size: 13px; color: #666;"><strong>To:</strong> <span id="toUserDisplay" style="color: #764ba2; font-weight: bold;">-</span></div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label style="font-weight: 600; display: block; margin-bottom: 8px;">👥 Select Who to Chat With</label>
-                                <select id="recipientId" onchange="onRecipientChange()" style="padding: 10px 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white; cursor: pointer;">
-                                    <option value="">-- Choose a user --</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
+                            <div class="form-group" style="margin-bottom: 15px;">
                                 <label for="messageContent" style="font-weight: 600;">💬 Message</label>
                                 <textarea id="messageContent" placeholder="Type your message..." style="resize: vertical; min-height: 80px;"></textarea>
                             </div>
-                            
+
                             <button onclick="sendMessage()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 100%; padding: 12px; font-size: 15px; font-weight: 600;">Send Message</button>
                             <div id="sendMessage"></div>
                         </div>
@@ -652,11 +638,6 @@
             document.getElementById('currentUserBadge').textContent = currentUserName;
             document.getElementById('yourShardDisplay').textContent = shardId;
             
-            // Update "From" display
-            document.getElementById('fromUserDisplay').textContent = `${currentUserName} (Shard ${shardId})`;
-            
-            // Reset "To" display
-            document.getElementById('toUserDisplay').textContent = '-';
 
             // Load users
             await loadUsers();
@@ -768,15 +749,6 @@
                     })
                     .join('');
                 
-                // Update recipient dropdown
-                const recipientSelect = document.getElementById('recipientId');
-                const currentValue = recipientSelect.value;
-                recipientSelect.innerHTML = '<option value="">-- Select a user --</option>' + 
-                    otherUsers.map(u => {
-                        const shardId = (u.id % 3) || 3;
-                        return `<option value="${u.id}">${u.name} (#${u.id}) - Shard ${shardId}</option>`;
-                    }).join('');
-                if (currentValue) recipientSelect.value = currentValue;
                 
                 console.log(`[CLIENT] Loaded ${otherUsers.length} users:`, otherUsers);
             } catch (error) {
@@ -795,7 +767,6 @@
         function selectUser(userId) {
             selectedUserId = userId;
             selectedUserName = userNames[userId] || `User ${userId}`;
-            document.getElementById('recipientId').value = userId;
 
             // Update UI - mark as active
             document.querySelectorAll('.user-item').forEach(el => {
@@ -804,11 +775,6 @@
             if (event && event.currentTarget) {
                 event.currentTarget.classList.add('active');
             }
-
-            // Update "To" display
-            const toShardId = (userId % 3) || 3;
-            document.getElementById('toUserDisplay').textContent = `${selectedUserName} (Shard ${toShardId})`;
-            document.getElementById('toUserDisplay').style.color = '#764ba2';
 
             // Load conversation
             loadConversation();
@@ -894,7 +860,6 @@
 
         // Send a message
         async function sendMessage() {
-            const recipientId = document.getElementById('recipientId').value;
             const content = document.getElementById('messageContent').value;
 
             if (!currentUserId) {
@@ -902,25 +867,30 @@
                 return;
             }
 
-            if (!recipientId || !content) {
-                showMessage('sendMessage', 'Please fill in all fields', false);
+            if (!selectedUserId) {
+                showMessage('sendMessage', 'Please select a user to chat with first', false);
+                return;
+            }
+
+            if (!content) {
+                showMessage('sendMessage', 'Please enter a message', false);
                 return;
             }
 
             try {
                 const payload = {
                     from_user_id: parseInt(currentUserId),
-                    to_user_id: parseInt(recipientId),
+                    to_user_id: parseInt(selectedUserId),
                     content: content
                 };
-                
+
                 console.log(`[CLIENT] Sending message:`, payload);
-                
+
                 // Log cache operation
                 if (cacheMonitoringActive) {
-                    addCacheLogEntry('MESSAGE_SEND_START', `User ${currentUserId} → User ${recipientId}`);
+                    addCacheLogEntry('MESSAGE_SEND_START', `User ${currentUserId} → User ${selectedUserId}`);
                 }
-                
+
                 const response = await fetch(`${GATEWAY_URL}/api/messages`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -930,42 +900,35 @@
                 if (!response.ok) {
                     const error = await response.text();
                     console.error('[CLIENT] Server error:', error);
-                    
+
                     // Log error
                     if (cacheMonitoringActive) {
                         addCacheLogEntry('MESSAGE_ERROR', `Failed with status ${response.status}`);
                     }
-                    
+
                     throw new Error('Failed to send message');
                 }
 
                 const data = await response.json();
                 console.log('[CLIENT] Message sent response:', data);
-                
+
                 // Log successful send
                 if (cacheMonitoringActive) {
                     addCacheLogEntry('MESSAGE_SENT', `"${content.substring(0, 25)}..."`);
                 }
-                
-                const yourShard = (currentUserId % 3) || 3;
-                const recipientShard = (recipientId % 3) || 3;
-                showMessage('sendMessage', `✓ Message sent!\nFrom User ${currentUserId} (Shard ${yourShard}) → User ${recipientId} (Shard ${recipientShard})`, true);
+
                 document.getElementById('messageContent').value = '';
 
-                // Reload conversation after a short delay
-                setTimeout(() => {
-                    if (selectedUserId == recipientId) {
-                        loadConversation();
-                    }
-                }, 300);
+                // Immediately reload conversation to show the new message
+                await loadConversation();
             } catch (error) {
                 console.error('[CLIENT] Error sending message:', error);
-                
+
                 // Log error
                 if (cacheMonitoringActive) {
                     addCacheLogEntry('MESSAGE_ERROR', error.message);
                 }
-                
+
                 showMessage('sendMessage', 'Failed to send message: ' + error.message, false);
             }
         }
@@ -1002,17 +965,6 @@
             }, 5000);
         }
 
-        // Handle recipient dropdown change
-        function onRecipientChange() {
-            const recipientId = document.getElementById('recipientId').value;
-            if (recipientId) {
-                selectUser(recipientId);
-            } else {
-                selectedUserId = null;
-                document.getElementById('toUserDisplay').textContent = '-';
-                document.getElementById('messagesContainer').innerHTML = '<div class="empty-state" style="height: 100%; display: flex; align-items: center; justify-content: center;">Select a user to chat with</div>';
-            }
-        }
 
         // Load users on page load for the registration dropdown
         async function initializeUserDropdown() {

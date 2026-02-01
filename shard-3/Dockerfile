@@ -3,6 +3,7 @@ WORKDIR /app
 
 # Copy shared shard-core code
 COPY shared/shard-core/index.js ./shard-core.js
+COPY shared/shard-core/replication.js ./replication.js
 
 # Install dependencies
 COPY shard-3/package.json .
