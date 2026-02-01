@@ -5,12 +5,18 @@ const axios = require('axios');
 const app = express();
 const PORT = 3000;
 
-// Configuration
+// Configuration with backup shards for failover
 const SHARDS = [
-  { id: 1, url: 'http://shard-1:4001' },
-  { id: 2, url: 'http://shard-2:4002' },
-  { id: 3, url: 'http://shard-3:4003' }
+  { id: 1, primary: 'http://shard-1:4001', backup: 'http://shard-1-backup:4001' },
+  { id: 2, primary: 'http://shard-2:4002', backup: 'http://shard-2-backup:4002' },
+  { id: 3, primary: 'http://shard-3:4003', backup: 'http://shard-3-backup:4003' }
 ];
+
+// Track shard health
+const shardHealth = new Map();
+SHARDS.forEach(shard => {
+  shardHealth.set(shard.id, { healthy: true, failedAttempts: 0, lastChecked: Date.now() });
+});
 
 app.use(cors());
 app.use(express.json());
@@ -22,9 +28,6 @@ app.use((req, res, next) => {
 });
 
 // Helper function to determine shard based on user_id
-// User 1, 4, 7, 10... -> Shard 1
-// User 2, 5, 8, 11... -> Shard 2
-// User 3, 6, 9, 12... -> Shard 3
 function getShardForUser(userId) {
   const shardId = (Math.abs(parseInt(userId)) % SHARDS.length) || SHARDS.length;
   const shard = SHARDS.find(s => s.id === shardId);
@@ -32,17 +35,54 @@ function getShardForUser(userId) {
   return shard;
 }
 
+// Helper function to make request with failover
+async function makeShardRequest(shard, method, endpoint, data = null) {
+  const urls = [shard.primary, shard.backup];
+  
+  for (const url of urls) {
+    try {
+      console.log(`[GATEWAY] Attempting request to ${url}${endpoint}`);
+      
+      let response;
+      if (method === 'GET') {
+        response = await axios.get(`${url}${endpoint}`, { timeout: 5000 });
+      } else if (method === 'POST') {
+        response = await axios.post(`${url}${endpoint}`, data, { timeout: 5000 });
+      }
+      
+      // Mark as healthy if successful
+      shardHealth.set(shard.id, { healthy: true, failedAttempts: 0, lastChecked: Date.now() });
+      console.log(`[GATEWAY] Request successful on shard ${shard.id}`);
+      
+      return response.data;
+    } catch (error) {
+      console.warn(`[GATEWAY] Failed to reach ${url}: ${error.message}`);
+    }
+  }
+  
+  // All attempts failed
+  shardHealth.set(shard.id, { healthy: false, failedAttempts: (shardHealth.get(shard.id)?.failedAttempts || 0) + 1, lastChecked: Date.now() });
+  throw new Error(`Both primary and backup shards failed for shard ${shard.id}`);
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'gateway' });
+  res.json({ status: 'ok', service: 'gateway', shards: Object.fromEntries(shardHealth) });
 });
 
 // Get shard info
 app.get('/api/shards', (req, res) => {
-  res.json({ shards: SHARDS });
+  res.json({ 
+    shards: SHARDS.map(s => ({
+      id: s.id,
+      primary: s.primary,
+      backup: s.backup,
+      health: shardHealth.get(s.id)
+    }))
+  });
 });
 
-// Send message - routes to appropriate shard
+// Send message - routes to appropriate shard with failover
 app.post('/api/messages', async (req, res) => {
   try {
     const { from_user_id, to_user_id, content } = req.body;
@@ -51,24 +91,23 @@ app.post('/api/messages', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Route based on sender's shard
     const shard = getShardForUser(from_user_id);
     console.log(`[GATEWAY] Routing message from user ${from_user_id} to shard ${shard.id}`);
 
-    const response = await axios.post(`${shard.url}/api/messages`, {
+    const response = await makeShardRequest(shard, 'POST', '/api/messages', {
       from_user_id,
       to_user_id,
       content
     });
 
-    res.json(response.data);
+    res.json(response);
   } catch (error) {
     console.error('[GATEWAY] Error sending message:', error.message);
-    res.status(500).json({ error: 'Failed to send message', details: error.message });
+    res.status(503).json({ error: 'Service unavailable', details: error.message });
   }
 });
 
-// Get messages for a user - routes to appropriate shard
+// Get messages for a user - routes to appropriate shard with failover
 app.get('/api/messages/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -76,11 +115,11 @@ app.get('/api/messages/:userId', async (req, res) => {
     
     console.log(`[GATEWAY] Fetching messages for user ${userId} from shard ${shard.id}`);
 
-    const response = await axios.get(`${shard.url}/api/messages/${userId}`);
-    res.json(response.data);
+    const response = await makeShardRequest(shard, 'GET', `/api/messages/${userId}`);
+    res.json(response);
   } catch (error) {
     console.error('[GATEWAY] Error fetching messages:', error.message);
-    res.status(500).json({ error: 'Failed to fetch messages', details: error.message });
+    res.status(503).json({ error: 'Service unavailable', details: error.message });
   }
 });
 
@@ -93,16 +132,17 @@ app.get('/api/conversations/:userId/:otherUserId', async (req, res) => {
     
     console.log(`[GATEWAY] Fetching conversation between ${userId} (Shard ${userShard.id}) and ${otherUserId} (Shard ${otherShard.id})`);
 
-    // Fetch from both shards in parallel
-    const [resp1, resp2] = await Promise.all([
-      axios.get(`${userShard.url}/api/conversations/${userId}/${otherUserId}`).catch(err => ({ data: { messages: [] } })),
-      otherShard.id !== userShard.id 
-        ? axios.get(`${otherShard.url}/api/conversations/${userId}/${otherUserId}`).catch(err => ({ data: { messages: [] } }))
-        : Promise.resolve({ data: { messages: [] } })
-    ]);
+    // Fetch from both shards with failover
+    const resp1 = await makeShardRequest(userShard, 'GET', `/api/conversations/${userId}/${otherUserId}`);
+    
+    let resp2Data = { messages: [] };
+    if (otherShard.id !== userShard.id) {
+      const resp2 = await makeShardRequest(otherShard, 'GET', `/api/conversations/${userId}/${otherUserId}`);
+      resp2Data = resp2;
+    }
 
     // Merge messages from both shards and sort by timestamp
-    const allMessages = [...(resp1.data.messages || []), ...(resp2.data.messages || [])];
+    const allMessages = [...(resp1.messages || []), ...(resp2Data.messages || [])];
     allMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     
     // Remove duplicates
@@ -124,7 +164,7 @@ app.get('/api/conversations/:userId/:otherUserId', async (req, res) => {
     });
   } catch (error) {
     console.error('[GATEWAY] Error fetching conversation:', error.message);
-    res.status(500).json({ error: 'Failed to fetch conversation', details: error.message });
+    res.status(503).json({ error: 'Service unavailable', details: error.message });
   }
 });
 
@@ -134,10 +174,10 @@ app.get('/api/users', async (req, res) => {
     console.log('[GATEWAY] Fetching all users from all shards');
     
     const promises = SHARDS.map(shard =>
-      axios.get(`${shard.url}/api/users`)
-        .then(resp => resp.data.users || [])
+      makeShardRequest(shard, 'GET', '/api/users')
+        .then(data => data.users || [])
         .catch(err => {
-          console.error(`Error fetching from shard ${shard.id}:`, err.message);
+          console.warn(`[GATEWAY] Failed to get users from shard ${shard.id}:`, err.message);
           return [];
         })
     );
@@ -148,20 +188,19 @@ app.get('/api/users', async (req, res) => {
     res.json({ users, total: users.length });
   } catch (error) {
     console.error('[GATEWAY] Error fetching users:', error.message);
-    res.status(500).json({ error: 'Failed to fetch users', details: error.message });
+    res.status(503).json({ error: 'Service unavailable', details: error.message });
   }
 });
 
 // Health check for all shards
 app.get('/api/health/shards', async (req, res) => {
   try {
-    const healthChecks = await Promise.all(
-      SHARDS.map(shard =>
-        axios.get(`${shard.url}/health`)
-          .then(() => ({ shard: shard.id, status: 'healthy' }))
-          .catch(() => ({ shard: shard.id, status: 'unhealthy' }))
-      )
-    );
+    const healthChecks = SHARDS.map(shard => ({
+      shard: shard.id,
+      primary: shard.primary,
+      backup: shard.backup,
+      health: shardHealth.get(shard.id)
+    }));
 
     res.json({ shards: healthChecks });
   } catch (error) {

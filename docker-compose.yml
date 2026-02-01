@@ -1,17 +1,17 @@
 services:
-  # PostgreSQL Database
-  postgres:
+  # ============= SHARD 1: Primary Database =============
+  postgres-shard-1:
     image: postgres:15-alpine
-    container_name: whatsapp-postgres
+    container_name: whatsapp-postgres-shard-1
     environment:
-      POSTGRES_DB: whatsapp
+      POSTGRES_DB: whatsapp_shard_1
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_shard_1_data:/var/lib/postgresql/data
+      - ./postgres/shard-1-init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -20,14 +20,119 @@ services:
     networks:
       - whatsapp-network
 
-  # Redis Cache
-  redis:
+  # ============= SHARD 1: Backup Replica Database =============
+  postgres-shard-1-backup:
+    image: postgres:15-alpine
+    container_name: whatsapp-postgres-shard-1-backup
+    environment:
+      POSTGRES_DB: whatsapp_shard_1
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_shard_1_backup_data:/var/lib/postgresql/data
+      - ./postgres/shard-1-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # ============= SHARD 2: Primary Database =============
+  postgres-shard-2:
+    image: postgres:15-alpine
+    container_name: whatsapp-postgres-shard-2
+    environment:
+      POSTGRES_DB: whatsapp_shard_2
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_shard_2_data:/var/lib/postgresql/data
+      - ./postgres/shard-2-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # ============= SHARD 2: Backup Replica Database =============
+  postgres-shard-2-backup:
+    image: postgres:15-alpine
+    container_name: whatsapp-postgres-shard-2-backup
+    environment:
+      POSTGRES_DB: whatsapp_shard_2
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_shard_2_backup_data:/var/lib/postgresql/data
+      - ./postgres/shard-2-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # ============= SHARD 3: Primary Database =============
+  postgres-shard-3:
+    image: postgres:15-alpine
+    container_name: whatsapp-postgres-shard-3
+    environment:
+      POSTGRES_DB: whatsapp_shard_3
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_shard_3_data:/var/lib/postgresql/data
+      - ./postgres/shard-3-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # ============= SHARD 3: Backup Replica Database =============
+  postgres-shard-3-backup:
+    image: postgres:15-alpine
+    container_name: whatsapp-postgres-shard-3-backup
+    environment:
+      POSTGRES_DB: whatsapp_shard_3
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_shard_3_backup_data:/var/lib/postgresql/data
+      - ./postgres/shard-3-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # ============= Redis Cache for SHARD 1 =============
+  redis-shard-1:
     image: redis:7-alpine
-    container_name: whatsapp-redis
+    container_name: whatsapp-redis-shard-1
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - redis_shard_1_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -36,7 +141,39 @@ services:
     networks:
       - whatsapp-network
 
-  # Message Shard 1
+  # ============= Redis Cache for SHARD 2 =============
+  redis-shard-2:
+    image: redis:7-alpine
+    container_name: whatsapp-redis-shard-2
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_shard_2_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # ============= Redis Cache for SHARD 3 =============
+  redis-shard-3:
+    image: redis:7-alpine
+    container_name: whatsapp-redis-shard-3
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_shard_3_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+
+  # ============= Message Shard 1 =============
   shard-1:
     build:
       context: .
@@ -45,24 +182,28 @@ services:
     environment:
       SHARD_ID: "1"
       PORT: 4001
-      REDIS_URL: redis://redis:6379
-      DB_HOST: postgres
+      REDIS_URL: redis://redis-shard-1:6379
+      DB_HOST: postgres-shard-1
       DB_PORT: 5432
-      DB_NAME: whatsapp
+      DB_NAME: whatsapp_shard_1
       DB_USER: postgres
       DB_PASSWORD: postgres
+      DB_BACKUP_HOST: postgres-shard-1-backup
+      DB_BACKUP_PORT: 5432
     ports:
       - "4001:4001"
     depends_on:
-      postgres:
+      postgres-shard-1:
         condition: service_healthy
-      redis:
+      postgres-shard-1-backup:
+        condition: service_healthy
+      redis-shard-1:
         condition: service_healthy
     networks:
       - whatsapp-network
     restart: unless-stopped
 
-  # Message Shard 2
+  # ============= Message Shard 2 =============
   shard-2:
     build:
       context: .
@@ -71,24 +212,28 @@ services:
     environment:
       SHARD_ID: "2"
       PORT: 4002
-      REDIS_URL: redis://redis:6379
-      DB_HOST: postgres
+      REDIS_URL: redis://redis-shard-2:6379
+      DB_HOST: postgres-shard-2
       DB_PORT: 5432
-      DB_NAME: whatsapp
+      DB_NAME: whatsapp_shard_2
       DB_USER: postgres
       DB_PASSWORD: postgres
+      DB_BACKUP_HOST: postgres-shard-2-backup
+      DB_BACKUP_PORT: 5432
     ports:
       - "4002:4002"
     depends_on:
-      postgres:
+      postgres-shard-2:
         condition: service_healthy
-      redis:
+      postgres-shard-2-backup:
+        condition: service_healthy
+      redis-shard-2:
         condition: service_healthy
     networks:
       - whatsapp-network
     restart: unless-stopped
 
-  # Message Shard 3
+  # ============= Message Shard 3 =============
   shard-3:
     build:
       context: .
@@ -97,18 +242,22 @@ services:
     environment:
       SHARD_ID: "3"
       PORT: 4003
-      REDIS_URL: redis://redis:6379
-      DB_HOST: postgres
+      REDIS_URL: redis://redis-shard-3:6379
+      DB_HOST: postgres-shard-3
       DB_PORT: 5432
-      DB_NAME: whatsapp
+      DB_NAME: whatsapp_shard_3
       DB_USER: postgres
       DB_PASSWORD: postgres
+      DB_BACKUP_HOST: postgres-shard-3-backup
+      DB_BACKUP_PORT: 5432
     ports:
       - "4003:4003"
     depends_on:
-      postgres:
+      postgres-shard-3:
         condition: service_healthy
-      redis:
+      postgres-shard-3-backup:
+        condition: service_healthy
+      redis-shard-3:
         condition: service_healthy
     networks:
       - whatsapp-network
@@ -146,9 +295,23 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  postgres_shard_1_data:
     driver: local
-  redis_data:
+  postgres_shard_1_backup_data:
+    driver: local
+  postgres_shard_2_data:
+    driver: local
+  postgres_shard_2_backup_data:
+    driver: local
+  postgres_shard_3_data:
+    driver: local
+  postgres_shard_3_backup_data:
+    driver: local
+  redis_shard_1_data:
+    driver: local
+  redis_shard_2_data:
+    driver: local
+  redis_shard_3_data:
     driver: local
 
 networks:

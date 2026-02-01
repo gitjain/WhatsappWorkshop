@@ -11,6 +11,7 @@ const WebSocket = require('ws');
 const redis = require('redis');
 const pg = require('pg');
 const { v4: uuidv4 } = require('uuid');
+const { ReplicationManager } = require('./replication');
 
 /**
  * Main function to create and initialize a shard server
@@ -26,7 +27,9 @@ async function createShardServer(shardConfig) {
     DB_PORT = 5432,
     DB_NAME = 'whatsapp',
     DB_USER = 'postgres',
-    DB_PASSWORD = 'postgres'
+    DB_PASSWORD = 'postgres',
+    DB_BACKUP_HOST = 'postgres-backup',
+    DB_BACKUP_PORT = 5432
   } = shardConfig;
 
   console.log(`[SHARD-${SHARD_ID}] Initializing shard server...`);
@@ -52,6 +55,16 @@ async function createShardServer(shardConfig) {
   pool.on('error', (err) => {
     console.error(`[SHARD-${SHARD_ID}] PostgreSQL connection error:`, err.message);
   });
+
+  // ==================== SETUP DATABASE REPLICATION ====================
+  const replicationManager = new ReplicationManager(
+    SHARD_ID,
+    { host: DB_HOST, port: DB_PORT, database: DB_NAME, user: DB_USER, password: DB_PASSWORD },
+    { host: DB_BACKUP_HOST, port: DB_BACKUP_PORT, database: DB_NAME, user: DB_USER, password: DB_PASSWORD }
+  );
+  
+  replicationManager.initialize();
+  console.log(`[SHARD-${SHARD_ID}] Replication manager initialized`);
 
   // ==================== SETUP MIDDLEWARE ====================
   app.use(cors());

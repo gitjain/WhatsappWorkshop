@@ -5,13 +5,44 @@
 
 const { v4: uuidv4 } = require('uuid');
 
+// Helper function to determine if a user belongs to this shard
+function getUserShardId(userId) {
+  return (Math.abs(parseInt(userId)) % 3) || 3;
+}
+
+// Middleware to validate shard ownership
+function validateShardOwnership(shardId) {
+  return (req, res, next) => {
+    const { from_user_id, userId, otherUserId } = req.body || req.params || {};
+    
+    // Determine which user to check
+    let userToCheck = from_user_id || userId;
+    
+    if (!userToCheck) {
+      return res.status(400).json({ error: 'No user ID provided' });
+    }
+    
+    const assignedShardId = getUserShardId(userToCheck);
+    
+    if (parseInt(assignedShardId) !== parseInt(shardId)) {
+      return res.status(403).json({ 
+        error: 'Forbidden', 
+        message: `User ${userToCheck} belongs to shard ${assignedShardId}, not shard ${shardId}`,
+        details: 'This shard does not manage this user'
+      });
+    }
+    
+    next();
+  };
+}
+
 function createMessageRoutes(app, pool, redisClient, shardId, connectedClients) {
   
   /**
    * POST /api/messages
-   * Send a new message
+   * Send a new message - ONLY from users belonging to this shard
    */
-  app.post('/api/messages', async (req, res) => {
+  app.post('/api/messages', validateShardOwnership(shardId), async (req, res) => {
     try {
       const { from_user_id, to_user_id, content } = req.body;
       const messageId = uuidv4();
@@ -66,9 +97,9 @@ function createMessageRoutes(app, pool, redisClient, shardId, connectedClients) 
 
   /**
    * GET /api/messages/:userId
-   * Get all messages for a specific user
+   * Get all messages for a specific user - ONLY if user belongs to this shard
    */
-  app.get('/api/messages/:userId', async (req, res) => {
+  app.get('/api/messages/:userId', validateShardOwnership(shardId), async (req, res) => {
     try {
       const { userId } = req.params;
       const limit = req.query.limit || 50;
@@ -103,9 +134,9 @@ function createMessageRoutes(app, pool, redisClient, shardId, connectedClients) 
 
   /**
    * GET /api/conversations/:userId/:otherUserId
-   * Get conversation between two specific users
+   * Get conversation between two specific users - ONLY if userId belongs to this shard
    */
-  app.get('/api/conversations/:userId/:otherUserId', async (req, res) => {
+  app.get('/api/conversations/:userId/:otherUserId', validateShardOwnership(shardId), async (req, res) => {
     try {
       const { userId, otherUserId } = req.params;
       const limit = req.query.limit || 100;
