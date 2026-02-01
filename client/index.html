@@ -539,12 +539,15 @@
     <script>
         const GATEWAY_URL = 'http://localhost:3000';
         let currentUserId = null;
+        let currentUserName = null;
         let selectedUserId = null;
+        let selectedUserName = null;
         let connectedShards = {};
         let messageHistory = {};
         let wsConnections = {}; // WebSocket connections per shard
         let cacheMonitoringActive = false;
         let cacheLogEntries = [];
+        let userNames = {}; // Map user IDs to names
 
         // Tab switching function
         function switchTab(tabName) {
@@ -626,18 +629,38 @@
             }
 
             currentUserId = userId;
+            
+            // First load all users to get names
+            try {
+                const response = await fetch(`${GATEWAY_URL}/api/users`);
+                const data = await response.json();
+                const users = data.users || [];
+                
+                // Store user names
+                users.forEach(u => {
+                    userNames[u.id] = u.name;
+                });
+                
+                // Get current user's name
+                const currentUser = users.find(u => u.id == userId);
+                currentUserName = currentUser ? currentUser.name : `User ${userId}`;
+            } catch (error) {
+                console.error('Error loading users:', error);
+                currentUserName = `User ${userId}`;
+            }
+            
             const shardId = (userId % 3) || 3;
             
-            updateStatus(true, `Connected as User ${userId}`);
-            showMessage('userMessage', `✓ You are now User ${userId}\n\nYour messages will be stored in Shard ${shardId}`, true);
+            updateStatus(true, `Connected as ${currentUserName}`);
+            showMessage('userMessage', `✓ You are now ${currentUserName}\n\nYour messages will be stored in Shard ${shardId}`, true);
             
             // Display current user badge
             document.getElementById('currentUserDisplay').style.display = 'block';
-            document.getElementById('currentUserBadge').textContent = userId;
+            document.getElementById('currentUserBadge').textContent = currentUserName;
             document.getElementById('yourShardDisplay').textContent = shardId;
             
             // Update "From" display
-            document.getElementById('fromUserDisplay').textContent = `User ${userId} (Shard ${shardId})`;
+            document.getElementById('fromUserDisplay').textContent = `${currentUserName} (Shard ${shardId})`;
             
             // Reset "To" display
             document.getElementById('toUserDisplay').textContent = '-';
@@ -714,6 +737,11 @@
                 const users = data.users || [];
                 const usersList = document.getElementById('usersList');
                 
+                // Store user names in map for later reference
+                users.forEach(u => {
+                    userNames[u.id] = u.name;
+                });
+                
                 // Log successful load
                 if (cacheMonitoringActive) {
                     addCacheLogEntry('USERS_LOADED', `${users.length} users from API`);
@@ -724,16 +752,16 @@
                     return;
                 }
 
-                const uniqueUsers = [...new Set(users)].sort((a, b) => a - b);
-                const otherUsers = uniqueUsers.filter(u => u != currentUserId);
+                // Filter out current user
+                const otherUsers = users.filter(u => u.id != currentUserId);
                 
                 // Update user list
                 usersList.innerHTML = otherUsers
                     .map(u => {
-                        const shardId = (u % 3) || 3;
+                        const shardId = (u.id % 3) || 3;
                         return `
-                            <div class="user-item" onclick="selectUser('${u}')">
-                                <strong>User ${u}</strong> → Shard ${shardId}
+                            <div class="user-item" onclick="selectUser('${u.id}')">
+                                <strong>${u.name}</strong> <span style="font-size: 12px; color: #999;">(#${u.id})</span> → Shard ${shardId}
                             </div>
                         `;
                     })
@@ -744,12 +772,12 @@
                 const currentValue = recipientSelect.value;
                 recipientSelect.innerHTML = '<option value="">-- Select a user --</option>' + 
                     otherUsers.map(u => {
-                        const shardId = (u % 3) || 3;
-                        return `<option value="${u}">User ${u} (Shard ${shardId})</option>`;
+                        const shardId = (u.id % 3) || 3;
+                        return `<option value="${u.id}">${u.name} (#${u.id}) - Shard ${shardId}</option>`;
                     }).join('');
                 if (currentValue) recipientSelect.value = currentValue;
                 
-                console.log(`[CLIENT] Loaded ${uniqueUsers.length} users:`, uniqueUsers);
+                console.log(`[CLIENT] Loaded ${otherUsers.length} users:`, otherUsers);
             } catch (error) {
                 console.error('Error loading users:', error);
                 
@@ -765,17 +793,20 @@
         // Select a user for conversation
         function selectUser(userId) {
             selectedUserId = userId;
+            selectedUserName = userNames[userId] || `User ${userId}`;
             document.getElementById('recipientId').value = userId;
 
             // Update UI - mark as active
             document.querySelectorAll('.user-item').forEach(el => {
                 el.classList.remove('active');
             });
-            event.currentTarget.classList.add('active');
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            }
 
             // Update "To" display
             const toShardId = (userId % 3) || 3;
-            document.getElementById('toUserDisplay').textContent = `User ${userId} (Shard ${toShardId})`;
+            document.getElementById('toUserDisplay').textContent = `${selectedUserName} (Shard ${toShardId})`;
             document.getElementById('toUserDisplay').style.color = '#764ba2';
 
             // Load conversation
