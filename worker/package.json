@@ -1,0 +1,13 @@
+{
+  "name": "whatsapp-message-worker",
+  "version": "1.0.0",
+  "description": "Message queue worker that consumes from RabbitMQ and writes to shards",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.3",
+    "axios": "^1.6.0"
+  }
+}

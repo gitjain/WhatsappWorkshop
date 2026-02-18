@@ -1,0 +1,12 @@
+{
+  "name": "mq-consumer",
+  "version": "1.0.0",
+  "description": "Message Queue Demo - Consumer (Worker)",
+  "main": "worker.js",
+  "scripts": {
+    "start": "node worker.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.3"
+  }
+}

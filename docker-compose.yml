@@ -1,4 +1,213 @@
+# WhatsApp Clone - Complete Distributed Architecture
+#
+# INTERVIEW: This docker-compose demonstrates a production-like architecture:
+# 1. NGINX Load Balancer → Distributes traffic across gateways
+# 2. Multiple API Gateways → Horizontal scaling, high availability
+# 3. RabbitMQ Message Queue → Async processing, reliability
+# 4. Message Workers → Process queue, write to shards
+# 5. Sharded Databases → Data partitioned by user ID
+# 6. Redis Cache → Fast reads, reduced DB load
+# 7. Database Replicas → Backup/failover capability
+
 services:
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 1: LOAD BALANCER (Entry Point)
+  # ═══════════════════════════════════════════════════════════════════
+  # INTERVIEW: "How do you handle millions of concurrent users?"
+  # Answer: Load balancer distributes traffic, allows horizontal scaling
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: whatsapp-nginx
+    ports:
+      - "80:80"   # Main entry point for clients
+    depends_on:
+      - gateway-1
+      - gateway-2
+      - gateway-3
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 2: MESSAGE QUEUE (Async Processing)
+  # ═══════════════════════════════════════════════════════════════════
+  # INTERVIEW: "How do you handle traffic spikes?"
+  # Answer: Queue absorbs bursts, workers process at steady rate
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: whatsapp-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP protocol
+      - "15672:15672"  # Management UI (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 3: API GATEWAYS (Multiple Instances for HA)
+  # ═══════════════════════════════════════════════════════════════════
+  # INTERVIEW: "What if a gateway crashes?"
+  # Answer: Load balancer routes to healthy instances automatically
+
+  gateway-1:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: whatsapp-gateway-1
+    environment:
+      PORT: 3000
+      GATEWAY_ID: "1"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      shard-1:
+        condition: service_started
+      shard-2:
+        condition: service_started
+      shard-3:
+        condition: service_started
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  gateway-2:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: whatsapp-gateway-2
+    environment:
+      PORT: 3000
+      GATEWAY_ID: "2"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      shard-1:
+        condition: service_started
+      shard-2:
+        condition: service_started
+      shard-3:
+        condition: service_started
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  gateway-3:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: whatsapp-gateway-3
+    environment:
+      PORT: 3000
+      GATEWAY_ID: "3"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      shard-1:
+        condition: service_started
+      shard-2:
+        condition: service_started
+      shard-3:
+        condition: service_started
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # Keep legacy gateway for direct access (debugging/testing)
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: whatsapp-gateway
+    ports:
+      - "3000:3000"  # Direct access bypassing load balancer
+    environment:
+      PORT: 3000
+      GATEWAY_ID: "0"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      shard-1:
+        condition: service_started
+      shard-2:
+        condition: service_started
+      shard-3:
+        condition: service_started
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 4: MESSAGE WORKERS (Queue Consumers)
+  # ═══════════════════════════════════════════════════════════════════
+  # INTERVIEW: "How do you scale write throughput?"
+  # Answer: Add more workers - they compete for queue messages
+
+  worker-1:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: whatsapp-worker-1
+    environment:
+      WORKER_ID: "1"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      shard-1:
+        condition: service_started
+      shard-2:
+        condition: service_started
+      shard-3:
+        condition: service_started
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  worker-2:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: whatsapp-worker-2
+    environment:
+      WORKER_ID: "2"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      shard-1:
+        condition: service_started
+      shard-2:
+        condition: service_started
+      shard-3:
+        condition: service_started
+    networks:
+      - whatsapp-network
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 5: DATABASE SHARDS (Data Partitioning)
+  # ═══════════════════════════════════════════════════════════════════
+  # INTERVIEW: "How do you store billions of messages?"
+  # Answer: Shard by user ID - each shard handles subset of users
+
   # ============= SHARD 1: Primary Database =============
   postgres-shard-1:
     image: postgres:15-alpine
@@ -20,7 +229,7 @@ services:
     networks:
       - whatsapp-network
 
-  # ============= SHARD 1: Backup Replica Database =============
+  # SHARD 1: Backup Replica
   postgres-shard-1-backup:
     image: postgres:15-alpine
     container_name: whatsapp-postgres-shard-1-backup
@@ -62,7 +271,7 @@ services:
     networks:
       - whatsapp-network
 
-  # ============= SHARD 2: Backup Replica Database =============
+  # SHARD 2: Backup Replica
   postgres-shard-2-backup:
     image: postgres:15-alpine
     container_name: whatsapp-postgres-shard-2-backup
@@ -104,7 +313,7 @@ services:
     networks:
       - whatsapp-network
 
-  # ============= SHARD 3: Backup Replica Database =============
+  # SHARD 3: Backup Replica
   postgres-shard-3-backup:
     image: postgres:15-alpine
     container_name: whatsapp-postgres-shard-3-backup
@@ -125,7 +334,12 @@ services:
     networks:
       - whatsapp-network
 
-  # ============= Redis Cache for SHARD 1 =============
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 6: REDIS CACHE (Fast Reads)
+  # ═══════════════════════════════════════════════════════════════════
+  # INTERVIEW: "How do you reduce database load?"
+  # Answer: Cache frequently accessed data in Redis
+
   redis-shard-1:
     image: redis:7-alpine
     container_name: whatsapp-redis-shard-1
@@ -141,7 +355,6 @@ services:
     networks:
       - whatsapp-network
 
-  # ============= Redis Cache for SHARD 2 =============
   redis-shard-2:
     image: redis:7-alpine
     container_name: whatsapp-redis-shard-2
@@ -157,7 +370,6 @@ services:
     networks:
       - whatsapp-network
 
-  # ============= Redis Cache for SHARD 3 =============
   redis-shard-3:
     image: redis:7-alpine
     container_name: whatsapp-redis-shard-3
@@ -173,7 +385,10 @@ services:
     networks:
       - whatsapp-network
 
-  # ============= Message Shard 1 =============
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 7: SHARD SERVICES (Business Logic)
+  # ═══════════════════════════════════════════════════════════════════
+
   shard-1:
     build:
       context: .
@@ -203,7 +418,6 @@ services:
       - whatsapp-network
     restart: unless-stopped
 
-  # ============= Message Shard 2 =============
   shard-2:
     build:
       context: .
@@ -233,7 +447,6 @@ services:
       - whatsapp-network
     restart: unless-stopped
 
-  # ============= Message Shard 3 =============
   shard-3:
     build:
       context: .
@@ -263,23 +476,10 @@ services:
       - whatsapp-network
     restart: unless-stopped
 
-  # API Gateway
-  gateway:
-    build:
-      context: ./gateway
-      dockerfile: Dockerfile
-    container_name: whatsapp-gateway
-    ports:
-      - "3000:3000"
-    depends_on:
-      - shard-1
-      - shard-2
-      - shard-3
-    networks:
-      - whatsapp-network
-    restart: unless-stopped
+  # ═══════════════════════════════════════════════════════════════════
+  # CLIENT (Web UI)
+  # ═══════════════════════════════════════════════════════════════════
 
-  # Simple HTTP Server for Client
   client:
     image: httpserver:latest
     container_name: whatsapp-client
@@ -293,6 +493,10 @@ services:
     networks:
       - whatsapp-network
     restart: unless-stopped
+
+# ═══════════════════════════════════════════════════════════════════
+# VOLUMES (Persistent Storage)
+# ═══════════════════════════════════════════════════════════════════
 
 volumes:
   postgres_shard_1_data:
@@ -312,6 +516,8 @@ volumes:
   redis_shard_2_data:
     driver: local
   redis_shard_3_data:
+    driver: local
+  rabbitmq_data:
     driver: local
 
 networks:

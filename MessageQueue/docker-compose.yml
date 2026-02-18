@@ -1,0 +1,173 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#                    MESSAGE QUEUE DEMO - Docker Compose
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# This is a SIMPLE setup to learn how message queues work.
+#
+# ARCHITECTURE:
+# ═════════════
+#
+#    ┌─────────────────────────────────────────────────────────────────┐
+#    │                         YOUR BROWSER                            │
+#    │                    http://localhost:8080                        │
+#    └─────────────────────────────────────────────────────────────────┘
+#                                    │
+#                                    ▼
+#    ┌─────────────────────────────────────────────────────────────────┐
+#    │                         PRODUCER                                │
+#    │                    http://localhost:3000                        │
+#    │                                                                 │
+#    │   Receives tasks and publishes them to the message queue        │
+#    └─────────────────────────────────────────────────────────────────┘
+#                                    │
+#                                    ▼
+#    ┌─────────────────────────────────────────────────────────────────┐
+#    │                         RABBITMQ                                │
+#    │              Message Queue (amqp://localhost:5672)              │
+#    │              Management UI: http://localhost:15672              │
+#    │                                                                 │
+#    │   Stores messages until consumers process them                  │
+#    └─────────────────────────────────────────────────────────────────┘
+#                                    │
+#              ┌────────────────────┼────────────────────┐
+#              ▼                    ▼                    ▼
+#    ┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+#    │    CONSUMER 1     │ │    CONSUMER 2     │ │    CONSUMER 3     │
+#    │   (Worker)        │ │   (Worker)        │ │   (Worker)        │
+#    │                   │ │                   │ │                   │
+#    │ Processes tasks   │ │ Processes tasks   │ │ Processes tasks   │
+#    └───────────────────┘ └───────────────────┘ └───────────────────┘
+#
+# HOW TO RUN:
+# ═══════════
+#   docker-compose up --build
+#
+# THEN OPEN:
+#   http://localhost:8080  (Demo UI)
+#   http://localhost:15672 (RabbitMQ Management - guest/guest)
+#
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════
+  #                         RABBITMQ (Message Broker)
+  # ═══════════════════════════════════════════════════════════════════════
+  # The heart of the system - stores and delivers messages between
+  # producers and consumers.
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: mq-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP protocol (for producers/consumers)
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - mq-network
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #                         PRODUCER (API Server)
+  # ═══════════════════════════════════════════════════════════════════════
+  # Receives HTTP requests and publishes messages to the queue.
+  # Returns immediately - doesn't wait for processing!
+
+  producer:
+    build:
+      context: ./producer
+      dockerfile: Dockerfile
+    container_name: mq-producer
+    ports:
+      - "3000:3000"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      PORT: 3000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - mq-network
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #                         CONSUMERS (Workers)
+  # ═══════════════════════════════════════════════════════════════════════
+  # These workers compete for messages from the queue.
+  # Each message is processed by ONLY ONE consumer.
+
+  consumer-1:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    container_name: mq-consumer-1
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      WORKER_ID: "1"
+      CALLBACK_URL: http://producer:3000/internal/task-complete
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - mq-network
+    restart: unless-stopped
+
+  consumer-2:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    container_name: mq-consumer-2
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      WORKER_ID: "2"
+      CALLBACK_URL: http://producer:3000/internal/task-complete
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - mq-network
+    restart: unless-stopped
+
+  consumer-3:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    container_name: mq-consumer-3
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      WORKER_ID: "3"
+      CALLBACK_URL: http://producer:3000/internal/task-complete
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - mq-network
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #                         WEB CLIENT (Demo UI)
+  # ═══════════════════════════════════════════════════════════════════════
+  # A simple web page to visualize the message queue in action.
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: mq-client
+    ports:
+      - "8080:80"
+    depends_on:
+      - producer
+    networks:
+      - mq-network
+    restart: unless-stopped
+
+networks:
+  mq-network:
+    driver: bridge

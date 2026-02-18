@@ -1,0 +1,126 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#                    LOAD BALANCER DEMO - Docker Compose
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# This is a SIMPLE setup to learn how load balancers work.
+#
+# ARCHITECTURE:
+# ═════════════
+#
+#    ┌─────────────────────────────────────────────────────────────────┐
+#    │                         YOUR BROWSER                            │
+#    │                    http://localhost:8080                        │
+#    └─────────────────────────────────────────────────────────────────┘
+#                                    │
+#                                    ▼
+#    ┌─────────────────────────────────────────────────────────────────┐
+#    │                      NGINX LOAD BALANCER                        │
+#    │                     http://localhost:80                         │
+#    │                                                                 │
+#    │   Receives ALL requests and distributes them to servers         │
+#    └─────────────────────────────────────────────────────────────────┘
+#                    │                │                │
+#                    ▼                ▼                ▼
+#    ┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+#    │     SERVER 1      │ │     SERVER 2      │ │     SERVER 3      │
+#    │   (internal)      │ │   (internal)      │ │   (internal)      │
+#    │                   │ │                   │ │                   │
+#    │ Returns: green    │ │ Returns: blue     │ │ Returns: orange   │
+#    └───────────────────┘ └───────────────────┘ └───────────────────┘
+#
+# HOW TO RUN:
+# ═══════════
+#   docker-compose up --build
+#
+# THEN OPEN:
+#   http://localhost:8080  (Demo UI)
+#   http://localhost       (Direct to load balancer)
+#
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════
+  #                         LOAD BALANCER (NGINX)
+  # ═══════════════════════════════════════════════════════════════════════
+  # This is the SINGLE entry point. All traffic goes through here.
+  # NGINX decides which server handles each request.
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: lb-nginx
+    ports:
+      - "80:80"    # Load balancer exposed on port 80
+    depends_on:
+      - server-1
+      - server-2
+      - server-3
+    networks:
+      - lb-network
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #                         BACKEND SERVERS
+  # ═══════════════════════════════════════════════════════════════════════
+  # These are IDENTICAL servers. The only difference is their SERVER_ID.
+  # In real life, these would be copies of your application on different machines.
+
+  server-1:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: lb-server-1
+    environment:
+      SERVER_ID: "1"      # This identifies the server in responses
+      PORT: 3000
+    networks:
+      - lb-network
+    restart: unless-stopped
+    # NOTE: No ports exposed! Only NGINX can reach these servers.
+
+  server-2:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: lb-server-2
+    environment:
+      SERVER_ID: "2"
+      PORT: 3000
+    networks:
+      - lb-network
+    restart: unless-stopped
+
+  server-3:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: lb-server-3
+    environment:
+      SERVER_ID: "3"
+      PORT: 3000
+    networks:
+      - lb-network
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #                         WEB CLIENT (Demo UI)
+  # ═══════════════════════════════════════════════════════════════════════
+  # A simple web page to visualize the load balancing in action.
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: lb-client
+    ports:
+      - "8080:80"   # Demo UI on port 8080
+    depends_on:
+      - nginx
+    networks:
+      - lb-network
+    restart: unless-stopped
+
+networks:
+  lb-network:
+    driver: bridge
